@@ -1,7 +1,8 @@
 import streamlit as st
-import feedparser
 import pandas as pd
 import matplotlib.pyplot as plt
+import urllib.request
+import xml.etree.ElementTree as ET
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from wordcloud import WordCloud
@@ -15,23 +16,30 @@ st.set_page_config(
 )
 
 st.title("📊 Reddit Trend Word Cloud")
-st.caption("TF-IDF based word cloud from live Reddit RSS data")
+st.caption("TF-IDF based word cloud (no external RSS libraries)")
 
 # ------------------------------------
 # FUNCTIONS
 # ------------------------------------
-def fetch_reddit_text(query, min_words):
+def fetch_reddit_rss(query, min_words):
     """
-    Fetch Reddit RSS content until min_words is reached
+    Fetch Reddit RSS using ONLY standard Python libraries
     """
     url = f"https://www.reddit.com/search.rss?q={query}&sort=hot"
-    feed = feedparser.parse(url)
+
+    response = urllib.request.urlopen(url)
+    xml_data = response.read()
+
+    root = ET.fromstring(xml_data)
 
     texts = []
     word_count = 0
 
-    for entry in feed.entries:
-        content = entry.title + " " + entry.get("summary", "")
+    for item in root.findall(".//item"):
+        title = item.findtext("title", default="")
+        description = item.findtext("description", default="")
+
+        content = title + " " + description
         texts.append(content)
         word_count += len(content.split())
 
@@ -42,54 +50,48 @@ def fetch_reddit_text(query, min_words):
 
 
 def generate_wordcloud(texts):
-    """
-    Generate TF-IDF WordCloud
-    """
     vectorizer = TfidfVectorizer(
         stop_words="english",
         max_features=5000
     )
-    tfidf_matrix = vectorizer.fit_transform(texts)
 
+    tfidf_matrix = vectorizer.fit_transform(texts)
     scores = tfidf_matrix.sum(axis=0).A1
     words = vectorizer.get_feature_names_out()
 
-    frequencies = dict(zip(words, scores))
+    freq = dict(zip(words, scores))
 
     wc = WordCloud(
         width=1000,
         height=500,
         background_color="white"
-    ).generate_from_frequencies(frequencies)
+    ).generate_from_frequencies(freq)
 
     return wc
 
 
-def render_tab(topic_name, search_query):
+def render_tab(topic, query):
     col1, col2 = st.columns([1, 3])
 
     with col1:
-        st.subheader(topic_name)
+        st.subheader(topic)
         word_limit = st.slider(
             "Words to analyze",
-            min_value=500,
-            max_value=5000,
-            step=500,
-            value=1500,
-            key=topic_name
+            500, 5000, 1500, 500,
+            key=topic
         )
 
         run = st.button(
-            f"Analyze {topic_name}",
+            f"Analyze {topic}",
             use_container_width=True
         )
 
     if run:
-        with st.spinner("Fetching data & building word cloud..."):
-            texts, total_words = fetch_reddit_text(search_query, word_limit)
+        with st.spinner("Fetching data and building word cloud..."):
+            texts, total_words = fetch_reddit_rss(query, word_limit)
 
             if not texts:
-                st.error("No data fetched.")
+                st.error("No data found.")
                 return
 
             wc = generate_wordcloud(texts)
