@@ -10,22 +10,25 @@ from wordcloud import WordCloud
 # ----------------------------------
 # PAGE CONFIG
 # ----------------------------------
-st.set_page_config(
-    page_title="Trend Word Cloud",
-    layout="wide"
-)
+st.set_page_config(page_title="Trend Word Cloud", layout="wide")
 
 st.title("📊 Trend Word Cloud Analyzer")
-st.caption("Live Reddit RSS | TF-IDF | Streamlit Safe")
+st.caption("Live Reddit RSS • TF-IDF • Streamlit")
 
 # ----------------------------------
 # FUNCTIONS
 # ----------------------------------
 def fetch_reddit_rss(query, min_words):
-    encoded_query = quote_plus(query)  # 🔑 FIX
+    encoded_query = quote_plus(query)
     url = f"https://www.reddit.com/search.rss?q={encoded_query}&sort=hot"
 
-    response = urllib.request.urlopen(url)
+    # 🔑 REQUIRED USER-AGENT (THIS FIXES YOUR ISSUE)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; StreamlitApp/1.0)"
+    }
+
+    request = urllib.request.Request(url, headers=headers)
+    response = urllib.request.urlopen(request)
     xml_data = response.read()
 
     root = ET.fromstring(xml_data)
@@ -37,9 +40,11 @@ def fetch_reddit_rss(query, min_words):
         title = item.findtext("title", "")
         desc = item.findtext("description", "")
 
-        text = f"{title} {desc}"
-        texts.append(text)
-        word_count += len(text.split())
+        text = f"{title} {desc}".strip()
+
+        if text:
+            texts.append(text)
+            word_count += len(text.split())
 
         if word_count >= min_words:
             break
@@ -50,7 +55,7 @@ def fetch_reddit_rss(query, min_words):
 def generate_wordcloud(texts):
     vectorizer = TfidfVectorizer(
         stop_words="english",
-        max_features=5000
+        max_features=3000
     )
 
     tfidf = vectorizer.fit_transform(texts)
@@ -79,17 +84,14 @@ def tab_ui(topic, query):
             key=topic
         )
 
-        run = st.button(
-            f"Analyze {topic}",
-            use_container_width=True
-        )
+        run = st.button(f"Analyze {topic}", use_container_width=True)
 
     if run:
-        with st.spinner("Fetching data and generating word cloud..."):
+        with st.spinner("Fetching live Reddit data..."):
             texts, total_words = fetch_reddit_rss(query, word_limit)
 
-            if not texts:
-                st.error("No data found")
+            if len(texts) == 0:
+                st.error("Reddit returned no data. Try again.")
                 return
 
             wc = generate_wordcloud(texts)
