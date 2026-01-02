@@ -1,123 +1,111 @@
 import streamlit as st
-import requests
+
+try:
+    import feedparser
+    st.success("feedparser loaded successfully")
+except ImportError:
+    st.error("feedparser is not installed!")
+
+import streamlit as st
+import feedparser
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
-import re
 
-st.set_page_config(page_title="Social Media Big Data Analyzer", layout="wide")
-st.title("Social Media Big Data Analyzer")
+# ---------------------------------
+# PAGE CONFIG
+# ---------------------------------
+st.set_page_config(page_title="Trending Topics Dashboard", layout="wide")
 
-# ------------------ SAFE DATA FETCHERS ------------------
+st.title("🔥 Trending Topics Analysis Dashboard")
+st.markdown("**TF-IDF & Word Cloud Analysis using Free Public Feeds**")
 
-def fetch_google_trends_safe():
-    url = "https://trends.google.com/trends/trendingsearches/daily/rss?geo=IN"
-    r = requests.get(url, timeout=10)
+# ---------------------------------
+# FUNCTION: FETCH DATA
+# ---------------------------------
+def fetch_titles(url, source_name):
+    feed = feedparser.parse(url)
+    titles = [entry.title for entry in feed.entries]
+    df = pd.DataFrame(titles, columns=["title"])
+    st.write(f"Total {source_name} Records:", df.shape[0])
+    return df
 
-    titles = re.findall(r"<title>(.*?)</title>", r.text)
-    titles = titles[1:]  # remove channel title
+# ---------------------------------
+# FUNCTION: TF-IDF + WORD CLOUD
+# ---------------------------------
+def tfidf_wordcloud(df, source_name):
+    vectorizer = TfidfVectorizer(stop_words="english")
+    tfidf_matrix = vectorizer.fit_transform(df["title"])
 
-    # Ensure minimum data
-    if len(titles) < 50:
-        return []
-
-    return titles[:500]   # 500 topics guaranteed
-
-def fetch_reddit_safe():
-    url = "https://www.reddit.com/r/all/top.json?limit=200"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers, timeout=10).json()
-
-    posts = [p["data"]["title"] for p in r["data"]["children"]]
-    return posts if len(posts) > 50 else []
-
-# ------------------ TF-IDF SAFE FUNCTION ------------------
-
-def compute_tfidf_safe(text_list):
-    text_list = [t for t in text_list if isinstance(t, str) and len(t.strip()) > 3]
-
-    if len(text_list) == 0:
-        return None
-
-    vectorizer = TfidfVectorizer(
-        stop_words="english",
-        max_features=5000,
-        token_pattern=r"(?u)\b\w+\b"
-    )
-
-    X = vectorizer.fit_transform([" ".join(text_list)])
+    scores = tfidf_matrix.sum(axis=0).A1
     words = vectorizer.get_feature_names_out()
-    scores = X.toarray()[0]
 
-    df = pd.DataFrame({"Word": words, "TF-IDF Score": scores})
-    return df.sort_values(by="TF-IDF Score", ascending=False)
+    tfidf_df = pd.DataFrame({
+        "Word": words,
+        "TF-IDF Score": scores
+    }).sort_values(by="TF-IDF Score", ascending=False)
 
-# ------------------ WORD CLOUD ------------------
+    st.subheader("📊 TF-IDF Keyword Table")
+    st.dataframe(tfidf_df.head(50))
 
-def show_wordcloud(words):
-    wc = WordCloud(
-        width=900,
-        height=400,
-        background_color="black",
-        collocations=False
-    ).generate(" ".join(words))
+    st.subheader("☁️ Word Cloud")
+    tfidf_dict = dict(zip(tfidf_df["Word"], tfidf_df["TF-IDF Score"]))
 
-    plt.figure(figsize=(10,4))
-    plt.imshow(wc)
-    plt.axis("off")
-    st.pyplot(plt)
+    wc = WordCloud(width=900, height=400, background_color="white")
+    wc.generate_from_frequencies(tfidf_dict)
 
-# ------------------ UI TABS ------------------
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.imshow(wc, interpolation="bilinear")
+    ax.axis("off")
+    st.pyplot(fig)
 
-tab1, tab2, tab3 = st.tabs(["Twitter", "Reddit", "Facebook"])
+# ---------------------------------
+# TABS
+# ---------------------------------
+tab1, tab2, tab3 = st.tabs(["🐦 Twitter", "📘 Facebook", "👽 Reddit"])
 
-# ------------------ TWITTER ------------------
+# ---------------------------------
+# TWITTER TAB (Simulated via Google News)
+# ---------------------------------
 with tab1:
-    st.subheader("Twitter Trending Topics (Simulated)")
-    if st.button("Fetch Twitter Trends"):
-        data = fetch_google_trends_safe()
+    st.header("🐦 Twitter Trending Topics")
+    st.info("Twitter trends simulated using Google News RSS (Free Source)")
 
-        if not data:
-            st.warning("No trending data available. Try again later.")
-        else:
-            st.success(f"Fetched {len(data)} topics")
-            df = compute_tfidf_safe(data)
+    twitter_url = "https://news.google.com/rss/search?q=trending+on+twitter"
+    df_twitter = fetch_titles(twitter_url, "Twitter")
 
-            if df is not None:
-                st.dataframe(df.head(50))
-                show_wordcloud(df["Word"].head(200))
-            else:
-                st.warning("TF-IDF could not be generated.")
+    st.dataframe(df_twitter.head(20))
+    tfidf_wordcloud(df_twitter, "Twitter")
 
-# ------------------ REDDIT ------------------
+# ---------------------------------
+# FACEBOOK TAB (Simulated via Google News)
+# ---------------------------------
 with tab2:
-    st.subheader("Reddit Trending Topics (Live)")
-    if st.button("Fetch Reddit Trends"):
-        data = fetch_reddit_safe()
+    st.header("📘 Facebook Trending Topics")
+    st.info("Facebook trends simulated using Google News RSS (Free Source)")
 
-        if not data:
-            st.warning("No Reddit data available.")
-        else:
-            st.success(f"Fetched {len(data)} posts")
-            df = compute_tfidf_safe(data)
+    facebook_url = "https://news.google.com/rss/search?q=trending+on+facebook"
+    df_facebook = fetch_titles(facebook_url, "Facebook")
 
-            if df is not None:
-                st.dataframe(df.head(50))
-                show_wordcloud(df["Word"].head(200))
+    st.dataframe(df_facebook.head(20))
+    tfidf_wordcloud(df_facebook, "Facebook")
 
-# ------------------ FACEBOOK ------------------
+# ---------------------------------
+# REDDIT TAB (REAL DATA)
+# ---------------------------------
 with tab3:
-    st.subheader("Facebook Public Trends (Simulated)")
-    if st.button("Fetch Facebook Trends"):
-        data = fetch_google_trends_safe()
+    st.header("👽 Reddit Trending Topics")
+    st.success("Real Reddit data using public RSS feed")
 
-        if not data:
-            st.warning("No Facebook trend data available.")
-        else:
-            st.success(f"Fetched {len(data)} topics")
-            df = compute_tfidf_safe(data)
+    reddit_url = "https://www.reddit.com/r/popular/.rss"
+    df_reddit = fetch_titles(reddit_url, "Reddit")
 
-            if df is not None:
-                st.dataframe(df.head(50))
-                show_wordcloud(df["Word"].head(200))
+    st.dataframe(df_reddit.head(20))
+    tfidf_wordcloud(df_reddit, "Reddit")
+
+# ---------------------------------
+# FOOTER
+# ---------------------------------
+st.markdown("---")
+st.markdown("✅ **Free APIs | NLP | TF-IDF | Word Cloud | Streamlit**")
