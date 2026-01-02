@@ -1,8 +1,8 @@
 import streamlit as st
-import pandas as pd
 import matplotlib.pyplot as plt
 import urllib.request
 import xml.etree.ElementTree as ET
+from urllib.parse import quote_plus
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from wordcloud import WordCloud
@@ -16,13 +16,14 @@ st.set_page_config(
 )
 
 st.title("📊 Trend Word Cloud Analyzer")
-st.caption("Live Reddit trends | TF-IDF | Streamlit")
+st.caption("Live Reddit RSS | TF-IDF | Streamlit Safe")
 
 # ----------------------------------
 # FUNCTIONS
 # ----------------------------------
 def fetch_reddit_rss(query, min_words):
-    url = f"https://www.reddit.com/search.rss?q={query}&sort=hot"
+    encoded_query = quote_plus(query)  # 🔑 FIX
+    url = f"https://www.reddit.com/search.rss?q={encoded_query}&sort=hot"
 
     response = urllib.request.urlopen(url)
     xml_data = response.read()
@@ -46,7 +47,7 @@ def fetch_reddit_rss(query, min_words):
     return texts, word_count
 
 
-def create_wordcloud(texts):
+def generate_wordcloud(texts):
     vectorizer = TfidfVectorizer(
         stop_words="english",
         max_features=5000
@@ -84,14 +85,14 @@ def tab_ui(topic, query):
         )
 
     if run:
-        with st.spinner("Fetching live data..."):
+        with st.spinner("Fetching data and generating word cloud..."):
             texts, total_words = fetch_reddit_rss(query, word_limit)
 
             if not texts:
                 st.error("No data found")
                 return
 
-            wc = create_wordcloud(texts)
+            wc = generate_wordcloud(texts)
 
         st.success(f"Processed ~{total_words} words")
 
